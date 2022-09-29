@@ -1,33 +1,45 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:drag_gallery/models/parentModel.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
-import '../model.dart';
+import '../models/model.dart';
 
-class HomePage extends StatefulWidget {
-  const HomePage({Key? key}) : super(key: key);
-
+ class HomePage extends StatefulWidget {
+ const HomePage({Key? key,this.parentModel,this.dats, this.index}) : super(key: key);
+ final ParentModel? parentModel;
+ final String? dats;
+ final int? index;
   @override
+
   State<HomePage> createState() => _HomePageState();
 }
-  List<imageModel> modelList=[];
-  List<Widget> modelwid=[];
-  List<File> imageList=[];
-  List<imageModel> imagemodelList=[];
+  List<ImageModel> modelList=[];
+  //List<Widget> modelwid=[];
+  List<ParentModel> parentList=[];
   int countuuid=0;
+  bool isLoaded=false;
+  List<ParentModel> vmp=[];
+  late SharedPreferences prefs;
 
-  List<imageModel> vmp=[];
-  late SharedPreferences prefs ;
-class _HomePageState extends State<HomePage> {
-  File? _img;
+  enum TtsState{playing,stopped}
+  late FlutterTts _flutterTts;
+  TtsState _ttsState= TtsState.stopped;
+  String? _tts;
+
+  class _HomePageState extends State<HomePage> {
+  //File? _img;
   @override
   void initState() {
     super.initState();
     initData();
+    initTts();
 
 
 
@@ -46,19 +58,69 @@ class _HomePageState extends State<HomePage> {
    // // modelList.sort((a,b){return a.id!.compareTo(b.id!);});
 
   }
+  @override
+  void dispose(){
+    super.dispose();
+    _flutterTts.stop();
+  }
+  Future<void> initTts() async {
+    _flutterTts = FlutterTts();
+    await _flutterTts.awaitSpeakCompletion(true);
+
+    _flutterTts.setStartHandler(() {
+      setState(() {
+        print("Playing");
+        _ttsState = TtsState.playing;
+      });
+    });
+
+    _flutterTts.setCompletionHandler(() {
+      setState(() {
+        print("Complete");
+        _ttsState = TtsState.stopped;
+      });
+    });
+
+    _flutterTts.setCancelHandler(() {
+      setState(() {
+        print("Cancel");
+        _ttsState = TtsState.stopped;
+      });
+    });
+
+    _flutterTts.setErrorHandler((message) {
+      setState(() {
+        print("Error: $message");
+        _ttsState = TtsState.stopped;
+      });
+    });
+  }
   void initData()async{
     prefs= await SharedPreferences.getInstance();
+    List decodedData;
     setState(() {});
-    String? imp=prefs.getString("data");
-    var decodedData =jsonDecode(imp!) as List;
+    String? imp=prefs.getString("${widget.dats}");
+    if(imp==null){
+      isLoaded=false;
+      print("empty list gotten $imp");
+    var fn= await DefaultAssetBundle.of(context).loadString("assets/imageData.json");
+
+    decodedData =jsonDecode(fn) as List;
+      } else{
+      isLoaded=true;
+      decodedData =jsonDecode(imp) as List;
+    }
+
     for(var item in decodedData){
-      vmp.add(imageModel.fromJson(item));
+     // vmp.add(ImageModel.fromJson(item));
+      vmp.add(ParentModel.fromJson(item));
     }
 
     countuuid=int.parse(prefs.getString('uuid')??'0');
-    modelList=vmp;
+   // modelList=vmp;
+    parentList=vmp;
+    modelList=parentList[widget.index!].listz!;
     setState(() {
-
     });
   }
   Future pickImage(ImageSource source) async{
@@ -70,10 +132,9 @@ class _HomePageState extends State<HomePage> {
       //final imageTemp=File(image.path);
       setState(() {
 
-
       });
       print(modelList);
-      modelList.insert(0,imageModel(id: "uuid=${countuuid.toString()}",title: image.path.toString().substring(50,68),image:image.path.toString() ,order: modelList!=[]?0:modelList.indexOf(modelList.first)-1
+      modelList.insert(0,ImageModel(id: "uuid=${countuuid.toString()}",title: image.path.toString().substring(50,68),image:image.path.toString() ,isAssets:false,order: modelList!=[]?0:modelList.indexOf(modelList.first)-1
       ));
     }on PlatformException catch(e){print('failed to pick imagefile $e');}
 
@@ -81,30 +142,45 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     modelList.sort((a,b){return a.order!.compareTo(b.order!);});
-    return Scaffold(
+    List<ImageModel> mint = widget.parentModel!.listz!;
+
+      return Scaffold(
       appBar: AppBar(
         title: const Text("DragGallery"),
       ),
 
-      body: ReorderableGridView.count(crossAxisCount: 2,
+      body: ReorderableGridView.count(crossAxisCount: 3,
         childAspectRatio: 1.0,
         children:
-            modelList.map((imageModel e) =>Card(key: ValueKey(e.image!+e.id.toString()),
-              margin:EdgeInsets.all(5),color:Colors.grey.shade800,child: Column(
-              children: [
-                Expanded(child: Text(e.id.toString(),style: TextStyle(color: Colors.grey.shade50),)),
-                Expanded(child: Text(e.title.toString(),style: TextStyle(color: Colors.grey.shade200),)),
-                Expanded(flex: 6,
-                  child: Row(
-                    children: [
-                      Expanded(
-                          child:  Image.file(File(e.image!),fit: BoxFit.cover,)
-                      ),
-                    ],
+            modelList.map((ImageModel e) =>Card(key: ValueKey(e.image!+e.id.toString()),
+              margin:const EdgeInsets.all(5),color:Colors.grey.shade800,
+              child: GestureDetector( onTap: ()async{
+                //   print("what is null here ${e.title}");
+                _tts=e.title??"kioooooooo is good";
+                await _flutterTts.setVolume(1);
+                await _flutterTts.setSpeechRate(0.5);
+                await _flutterTts.setPitch(1);
+                await _flutterTts.speak(_tts!);
+                print("what is null here ${e.title}");
+
+              },
+                child: Column(
+                children: [
+                  Expanded(child: Text(e.id.toString(),style: TextStyle(color: Colors.grey.shade50),)),
+                  Expanded(child: Text(e.title.toString(),style: TextStyle(color: Colors.grey.shade200),)),
+                  Expanded(flex: 6,
+                    child: Row(
+                      children: [
+                        Expanded(
+                            child: !e.isAssets!? Image.file(File(e.image!),fit: BoxFit.cover,):Image.asset(e.image!,fit: BoxFit.cover,)
+                           // child:  Image.file(File(e.image!),fit: BoxFit.cover,)
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),)).toList(),
+                ],
+            ),
+              ),)).toList(),
 
         onReorder: (int oldIndex, int newIndex) {
        // imageModel path= modelList.removeAt(oldIndex);
@@ -139,9 +215,14 @@ class _HomePageState extends State<HomePage> {
        }
         setState(() { // modelList[oldIndex].order=newIndex;
         });
-       modelList.sort((a,b){return a.order!.compareTo(b.order!);});
-       String imp=jsonEncode(modelList);
-       prefs.setString("data", imp);
+
+         modelList.sort((a,b){return a.order!.compareTo(b.order!);});
+         parentList.removeAt(widget.index!);
+         parentList.insert(widget.index!,ParentModel(classId: "${widget.dats}",listz:modelList));
+         String imp=jsonEncode(parentList);
+         prefs.setString("${widget.dats}", imp);
+
+
 
         },
 
@@ -154,10 +235,17 @@ class _HomePageState extends State<HomePage> {
             IconButton(icon:const
             Icon( Icons.picture_in_picture_alt,color: Colors.white,),
               onPressed:()async{
-             await pickImage(ImageSource.gallery);
-              //modelList=[];
-              String imp=jsonEncode(modelList);
-              prefs.setString("data", imp);
+                setState(() {
+                  if (!isLoaded){
+                    //modelList=[];
+                  }
+                  //  modelList=[];
+                  isLoaded=true;
+                });
+                await pickImage(ImageSource.gallery);
+                parentList[widget.index!]=ParentModel(classId: "${widget.dats}",listz:modelList);
+                String imp=jsonEncode(parentList);
+                prefs.setString("${widget.dats}", imp);
             }),
             const Text('Add from Gallery',style: TextStyle(color: Colors.white, ),),
           ],
@@ -165,11 +253,12 @@ class _HomePageState extends State<HomePage> {
         Expanded(child: Column(
           children: [
             IconButton(icon:const Icon( Icons.camera,color: Colors.white,), tooltip: "icon",
-                onPressed:(){
+              onPressed:(){
+              isLoaded=true;
               pickImage(ImageSource.camera);
-              String imp=jsonEncode(modelList);
-              prefs.setString("data", imp);
-
+              parentList[widget.index!]=ParentModel(classId: "${widget.dats}",listz:modelList);
+              String imp=jsonEncode(parentList);
+               prefs.setString("${widget.dats}", imp);
             }),
             const Text('Add from Camera',style: TextStyle(color: Colors.white,)),
           ],
@@ -178,4 +267,12 @@ class _HomePageState extends State<HomePage> {
     ),
     );
   }
+}
+
+Future<String>getStorage()async{
+    if (Platform.isAndroid){
+      return (await getExternalStorageDirectory())!.path;
+    }else{
+      return (await getApplicationDocumentsDirectory()).path;
+    }
 }
