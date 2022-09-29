@@ -136,7 +136,7 @@ import '../models/model.dart';
       print(modelList);
       modelList.insert(0,ImageModel(id: "uuid=${countuuid.toString()}",title: image.path.toString().substring(50,68),image:image.path.toString() ,isAssets:false,order: modelList!=[]?0:modelList.indexOf(modelList.first)-1
       ));
-    }on PlatformException catch(e){print('failed to pick imagefile $e');}
+    }on PlatformException catch(e){print('failed to pick image_file $e');}
 
   }
   @override
